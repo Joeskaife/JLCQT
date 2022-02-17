@@ -148,7 +148,14 @@ class ImgLabel(QLabel):
 
     def mousePressEvent(self, ev):
         self.clicked.emit()
-      
+    
+class LinkLabel(QLabel):    
+    def __init__(self, img):
+        super().__init__()
+        #self.setStyleSheet('font-size: 35px')
+        self.setOpenExternalLinks(True)
+        #self.setParent(parent)
+        
 class JlcSearch(QDialog):
     def __init__(self, parent=None):
         super(JlcSearch, self).__init__(parent)
@@ -432,7 +439,9 @@ class JlcSearch(QDialog):
     
                 rows = cur.fetchall()
                                 
-                self.tableWidget.setRowCount(0)            
+                self.tableWidget.setRowCount(0)
+                
+                linkTemplate = '<a href={0}>{1}</a>'      
     
                 for row in rows:
                     rowPosition = self.tableWidget.rowCount()
@@ -447,8 +456,14 @@ class JlcSearch(QDialog):
                         priceField +=  '\n' + prices[2]
                     if len(prices) > 3:
                         priceField +=  '\n' + prices[3]
-                        
-                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PART,  QTableWidgetItem(row[DbRowEnum.DB_ROW_LCSC_PART]))
+                    
+                    if row[DbRowEnum.DB_ROW_DATASHEET].strip() == '':   
+                        self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PART,  QTableWidgetItem(row[DbRowEnum.DB_ROW_LCSC_PART]))
+                    else:
+                        linkLabel = LinkLabel(self)
+                        linkLabel.setText('<a href={0}>{1}</a>'.format(row[DbRowEnum.DB_ROW_DATASHEET], row[DbRowEnum.DB_ROW_LCSC_PART]))
+                        self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, linkLabel)
+
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_EXT,   QTableWidgetItem(row[DbRowEnum.DB_ROW_LIB_TYPE]))
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_DESC,  QTableWidgetItem(row[DbRowEnum.DB_ROW_SEC_CAT] + ' ' + row[DbRowEnum.DB_ROW_DESCR]))
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PKG,   QTableWidgetItem(str(row[DbRowEnum.DB_ROW_PACKAGE_]).replace('_','\n')))
