@@ -12,7 +12,7 @@ Until yaqwsx published his web-based tool, I hadn't even thought to try to impro
 In many ways, this "App" type tool is inferior having less functionality and less flexibility but... it's quicker for the type of use I wanted.
 
 ## Use
-This was written with Python3 and uses pyqt5, csv, sqlite3 and requests
+This was written with Python3 and uses pyqt5, csv, sqlite3 and requests. NB you might need to update your "pip" to get pyqt5.
 
 It requires a "imageCache" directory in the same directory as the script and that "imageCache" must contain a no_image.png (the one checked in here came from https://commons.wikimedia.org/wiki/File:Error.svg).
 
