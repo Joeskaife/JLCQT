@@ -482,7 +482,9 @@ class JlcSearch(QDialog):
                     self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_IMAGE, imgLabel)
 
     def imageClicked(self, part, datasheet):
-        imageFileName = getImageFilename(datasheet, part)
+        imageFilename = getImageFilename(datasheet, part)
+        if imageFilename != defaultImage:
+            self.handleDb()
 
     def sortType_clicked(self):
         if self.sortValue == SortEnum.SORT_STOCK_DOWN:
