@@ -404,7 +404,7 @@ class JlcSearch(QDialog):
                     if not firstCondition:
                         sqlCommand += "AND "
                     firstCondition = False
-                    sqlCommand += "(LOWER(FirstCategory) LIKE LOWER('%{0}%') OR LOWER(SecondCategory) LIKE LOWER('%{0}%') OR LOWER(Description) LIKE LOWER('%{0}%') OR LOWER(MFRPart) LIKE LOWER('%{0}%')) ".format(keyWord)
+                    sqlCommand += "(LOWER(FirstCategory) LIKE LOWER('%{0}%') OR LOWER(SecondCategory) LIKE LOWER('%{0}%') OR LOWER(Description) LIKE LOWER('%{0}%') OR LOWER(MFRPart) LIKE LOWER('%{0}%') OR LOWER(LCSCPart) = LOWER('{0}')) ".format(keyWord)
                 sqlCommand += ") "
                 
                 packagesList = self.packages.text().split()
