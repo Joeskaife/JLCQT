@@ -16,7 +16,7 @@ This was written with Python3 and uses pyqt5, csv, sqlite3 and requests. NB you 
 
 It requires a "imageCache" directory in the same directory as the script and that "imageCache" must contain a no_image.png (the one checked in here came from https://commons.wikimedia.org/wiki/File:Error.svg).
 
-Before you start you must get a CSV data file from JLC (https://jlcpcb.com/componentSearch/uploadComponentInfo). This file is updated frequently with current stock etc. Unfortunately, I found downloading this file a bit hit-and-miss (often times out with network errors) so I gave up trying to integrate that into the process. The CSV file is about 13M Bytes at the moment.
+Before you start you must get a CSV data file from JLC (https://jlcpcb.com/componentSearch/uploadComponentInfo). This file is updated frequently with current stock etc. Unfortunately, I found downloading this file a bit hit-and-miss (often times out with network errors) so I gave up trying to integrate that into the process. The CSV file is about 132M Bytes at the moment.
 
 Start as:
   python jlcqt.py
