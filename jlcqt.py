@@ -178,6 +178,8 @@ class JlcSearch(QDialog):
         # If the default file is here already, show it
         if os.path.isfile(defaultCsvFile):
             self.csvFile.addItem(defaultCsvFile)
+        else:
+            self.getCsvFile()
         self.csvFileLabel = QLabel("CSV File:")
         self.csvFileLabel.setBuddy(self.csvFile)
         self.csvFile.activated.connect(self.getCsvFile)
@@ -359,7 +361,7 @@ class JlcSearch(QDialog):
                             
                             rowIndex += 1
     
-                            self.progressBar.setValue(int((rowIndex*10000)/row_count))
+                            self.progressBar.setValue(1 + int((rowIndex*10000)/row_count))
                             QApplication.processEvents()
                             
             self.converting = False
