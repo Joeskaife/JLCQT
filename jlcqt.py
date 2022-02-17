@@ -88,53 +88,48 @@ def getImage(imgUrl, lcscCode):
         print('html request threw exception.')
         return False
         
-def getImageFilename(row, failedPartsList, currentImageList):
-
-    # Image is the LCSC part number + .jpg
-    imageFilename = row[DbRowEnum.DB_ROW_LCSC_PART] + '.jpg'
-    
-    # Check if we already have an image
-    if imageFilename not in currentImageList and imageFilename not in failedPartsList:
-        datasheet = row[DbRowEnum.DB_ROW_DATASHEET]
-        if datasheet.strip() == '':
-            imageFilename = defaultImage
-        else:
-            try:
-                splitDatasheet = datasheet.split('_', 1)
-                splitDatasheet = splitDatasheet[1].rsplit('.', 1)
+def getImageFilename(datasheet, lcscPart):
+    if datasheet.strip() == '':
+        # No datasheet, no way to derive an image url
+        imageFilename = defaultImage
+    else:
+        imageFilename = lcscPart + '.jpg'
+        try:
+            splitDatasheet = datasheet.split('_', 1)
+            splitDatasheet = splitDatasheet[1].rsplit('.', 1)
+        
+            '''
+             There are a number of variations of the url for the image - some of which look like typos
+             All are based on the datasheet name (for want of a better algorithm)
+            '''
+            imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front.jpg'
             
-                '''
-                 There are a number of variations of the url for the image - some of which look like typos
-                 All are based on the datasheet name (for want of a better algorithm)
-                '''
-                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front.jpg'
-                
-                if not getImage(imageLink, row[DbRowEnum.DB_ROW_LCSC_PART]):
-                    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front_10.jpg'
-    
-                    if not getImage(imageLink, row[DbRowEnum.DB_ROW_LCSC_PART]):
-                        imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front_10.JPG'
-    
-                        if not getImage(imageLink, row[DbRowEnum.DB_ROW_LCSC_PART]):
-                            imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front_11.jpg'
-    
-                            if not getImage(imageLink, row[DbRowEnum.DB_ROW_LCSC_PART]):
-                                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20280914_' + splitDatasheet[0] + '_front.jpg'
+            if not getImage(imageLink, lcscPart):
+                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front_10.jpg'
+
+                if not getImage(imageLink, lcscPart):
+                    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front_10.JPG'
+
+                    if not getImage(imageLink, lcscPart):
+                        imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front_11.jpg'
+
+                        if not getImage(imageLink, lcscPart):
+                            imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20280914_' + splitDatasheet[0] + '_front.jpg'
+                            
+                            if not getImage(imageLink, lcscPart):
+                                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_1.jpg'
                                 
-                                if not getImage(imageLink, row[DbRowEnum.DB_ROW_LCSC_PART]):
-                                    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_1.jpg'
+                                if not getImage(imageLink, lcscPart):                                       
+                                    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_package.jpg'
                                     
-                                    if not getImage(imageLink, row[DbRowEnum.DB_ROW_LCSC_PART]):                                       
-                                        imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_package.jpg'
-                                        
-                                        if not getImage(imageLink, row[DbRowEnum.DB_ROW_LCSC_PART]):
-                                            with open(failedPartsFile, 'a') as failedParts:
-                                                failedParts.write(imageFilename + '\n')
-                                                
-                                            imageFilename = defaultImage
-            except:
-                print('Error: problem trying to parse datasheet entry: {0}'.format(datasheet))
-                imageFilename = defaultImage
+                                    if not getImage(imageLink, lcscPart):
+                                        with open(failedPartsFile, 'a') as failedParts:
+                                            failedParts.write(imageFilename + '\n')
+                                            
+                                        imageFilename = defaultImage
+        except:
+            print('Error: problem trying to parse datasheet entry: {0}'.format(datasheet))
+            imageFilename = defaultImage
 
     return imageFilename
 
@@ -229,6 +224,8 @@ class JlcSearch(QDialog):
         self.update.clicked.connect(self.update_clicked)
         self.useExtendedCheckBox = QCheckBox("Extended Parts")
         #self.useExtendedCheckBox.setChecked(True)
+        self.loadImages = QCheckBox("Load Images")
+        self.loadImages.setChecked(True)
         self.tableWidget = QTableWidget(0, TableColumnEnum.TABLE_COL_COUNT)
         self.tableWidget.setHorizontalHeaderLabels(['LCSC Part','Type','Description', 'Package','Price','Stock','Image'])
         verticalHeader = self.tableWidget.verticalHeader()
@@ -252,6 +249,7 @@ class JlcSearch(QDialog):
         topLayout.addWidget(self.packageLabel)
         topLayout.addWidget(self.packages)
         topLayout.addWidget(self.useExtendedCheckBox)
+        topLayout.addWidget(self.loadImages)
         topLayout.addWidget(self.sortType)
         topLayout.addWidget(self.update)
         
@@ -330,7 +328,11 @@ class JlcSearch(QDialog):
                         # The first line in JLC files is a header
                         if len(row) == 13:
                             if self.cacheAllImages.isChecked():
-                                imageFileName = getImageFilename(row, failedPartsList, currentImageList)
+                                imageFilename = row[DbRowEnum.DB_ROW_LCSC_PART] + '.jpg'
+                                if imageFilename not in currentImageList and imageFilename not in failedPartsList:
+                                    imageFileName = getImageFilename(row[DbRowEnum.DB_ROW_DATASHEET], row[DbRowEnum.DB_ROW_LCSC_PART])
+                                else:
+                                    imageFilename = defaultImage
                                 
                             prices = row[10].split(',')
                             worstPrice = 0.0
@@ -452,13 +454,21 @@ class JlcSearch(QDialog):
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PKG,   QTableWidgetItem(str(row[DbRowEnum.DB_ROW_PACKAGE_]).replace('_','\n')))
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PRICE, QTableWidgetItem(priceField))
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_STOCK, QTableWidgetItem(row[DbRowEnum.DB_ROW_STOCK]))
-                        
-                    imageFileName = getImageFilename(row, failedPartsList, currentImageList)
+                    
+                    imageFilename = row[DbRowEnum.DB_ROW_LCSC_PART] + '.jpg'
+                    if imageFilename not in currentImageList:
+                        if self.loadImages.isChecked():
+                            if imageFilename not in failedPartsList:
+                                imageFileName = getImageFilename(row[DbRowEnum.DB_ROW_DATASHEET], row[DbRowEnum.DB_ROW_LCSC_PART])
+                            else:
+                                imageFilename = defaultImage
+                        else:
+                            imageFilename = defaultImage
                                         
-                    imgLabel = ImgLabel(imageCacheDir + imageFileName)
+                    imgLabel = ImgLabel(imageCacheDir + imageFilename)
                     imgLabel.setScaledContents(True)
     
-                    tooltip = '<img src="'+ imageCacheDir + imageFileName + '" width="300" height="300">'
+                    tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
                     imgLabel.setToolTip(tooltip)
     
                     self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_IMAGE, imgLabel)
