@@ -26,14 +26,10 @@ import requests
 import _thread
 import time
 
-from PyQt5.QtCore import QDateTime, Qt, QTimer, QPoint
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateTimeEdit,
-        QDial, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-        QProgressBar, QPushButton, QScrollBar, QSizePolicy,
-        QStyleFactory, QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit,
-        QVBoxLayout, QWidget, QFileDialog, QErrorMessage, QAbstractScrollArea)
-from PyQt5.QtGui import  QImage, QPixmap, QPainter
-
+from PyQt5.QtCore import *
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
+from functools import partial
 from enum import IntEnum
 
 class SortEnum(IntEnum):
@@ -72,7 +68,7 @@ failedPartsFile = imageCacheDir +'failedParts.txt'
 defaultImage = 'no_image.png'
 defaultCsvFile = 'JLCPCB.csv'
 defaultDbFile = 'jlc.db'
-            
+                 
 def getImage(imgUrl, lcscCode):
     try:
         response = requests.get(imgUrl, timeout=3.05)
@@ -134,6 +130,8 @@ def getImageFilename(datasheet, lcscPart):
     return imageFilename
 
 class ImgLabel(QLabel):
+    clicked = pyqtSignal()
+    
     def __init__(self, img):
         super(ImgLabel, self).__init__()
         self.pixmap = QPixmap(img)
@@ -148,6 +146,8 @@ class ImgLabel(QLabel):
         point.setY(int((size.height() - scaledPix.height())/2))
         painter.drawPixmap(point, scaledPix)    
 
+    def mousePressEvent(self, ev):
+        self.clicked.emit()
       
 class JlcSearch(QDialog):
     def __init__(self, parent=None):
@@ -456,24 +456,34 @@ class JlcSearch(QDialog):
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_STOCK, QTableWidgetItem(row[DbRowEnum.DB_ROW_STOCK]))
                     
                     imageFilename = row[DbRowEnum.DB_ROW_LCSC_PART] + '.jpg'
-                    if imageFilename not in currentImageList:
-                        if self.loadImages.isChecked():
-                            if imageFilename not in failedPartsList:
+                    imageNotInFailedList = False
+                    if imageFilename not in failedPartsList:
+                        imageNotInFailedList = True
+                        if imageFilename not in currentImageList:
+                            if self.loadImages.isChecked():
                                 imageFileName = getImageFilename(row[DbRowEnum.DB_ROW_DATASHEET], row[DbRowEnum.DB_ROW_LCSC_PART])
+                                if imageFilename == defaultImage:
+                                    imageNotInFailedList = False
                             else:
                                 imageFilename = defaultImage
-                        else:
-                            imageFilename = defaultImage
+                    else:
+                        imageFilename = defaultImage
                                         
                     imgLabel = ImgLabel(imageCacheDir + imageFilename)
                     imgLabel.setScaledContents(True)
+                    
+                    # If it might have been possible to download the image, clicking will do that
+                    if (imageFilename == defaultImage) and imageNotInFailedList:
+                        imgLabel.clicked.connect(partial(self.imageClicked, row[DbRowEnum.DB_ROW_LCSC_PART], row[DbRowEnum.DB_ROW_DATASHEET]))
     
                     tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
                     imgLabel.setToolTip(tooltip)
     
                     self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_IMAGE, imgLabel)
 
-            
+    def imageClicked(self, part, datasheet):
+        imageFileName = getImageFilename(datasheet, part)
+
     def sortType_clicked(self):
         if self.sortValue == SortEnum.SORT_STOCK_DOWN:
             self.sortType.setText("Sort Price Up")
@@ -500,3 +510,4 @@ if __name__ == '__main__':
     dialogApp = JlcSearch()
     dialogApp.show()
     sys.exit(app.exec_()) 
+
