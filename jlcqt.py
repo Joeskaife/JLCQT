@@ -42,7 +42,7 @@ class DbRowEnum(IntEnum):
     DB_ROW_FIRST_CAT = 1
     DB_ROW_SEC_CAT = 2
     DB_ROW_MFR_PART = 3
-    DB_ROW_PACKAGE_ = 4
+    DB_ROW_PACKAGE = 4
     DB_ROW_SOLDER_JNT = 5
     DB_ROW_MANF = 6
     DB_ROW_LIB_TYPE = 7
@@ -58,10 +58,11 @@ class TableColumnEnum(IntEnum):
     TABLE_COL_EXT = 1
     TABLE_COL_DESC = 2
     TABLE_COL_PKG = 3
-    TABLE_COL_PRICE = 4
-    TABLE_COL_STOCK = 5
-    TABLE_COL_IMAGE = 6
-    TABLE_COL_COUNT = 7
+    TABLE_COL_MANF = 4
+    TABLE_COL_PRICE = 5
+    TABLE_COL_STOCK = 6
+    TABLE_COL_IMAGE = 7
+    TABLE_COL_COUNT = 8
 
 imageCacheDir = 'imageCache/'
 failedPartsFile = imageCacheDir +'failedParts.txt'
@@ -152,16 +153,14 @@ class ImgLabel(QLabel):
 class LinkLabel(QLabel):    
     def __init__(self, img):
         super().__init__()
-        #self.setStyleSheet('font-size: 35px')
         self.setOpenExternalLinks(True)
-        #self.setParent(parent)
         
 class JlcSearch(QDialog):
     def __init__(self, parent=None):
         super(JlcSearch, self).__init__(parent)
         
         self.originalPalette = QApplication.palette()
-        self.setMinimumSize(800, 300)
+        self.setMinimumSize(930, 300)
         
         expandPolicy = QSizePolicy()
         expandPolicy.setHorizontalPolicy(QSizePolicy.Expanding)
@@ -234,7 +233,7 @@ class JlcSearch(QDialog):
         self.loadImages = QCheckBox("Load Images")
         self.loadImages.setChecked(True)
         self.tableWidget = QTableWidget(0, TableColumnEnum.TABLE_COL_COUNT)
-        self.tableWidget.setHorizontalHeaderLabels(['LCSC Part','Type','Description', 'Package','Price','Stock','Image'])
+        self.tableWidget.setHorizontalHeaderLabels(['LCSC Part','Type','Description','Package','Manf','Price','Stock','Image'])
         verticalHeader = self.tableWidget.verticalHeader()
         verticalHeader.setMinimumSectionSize(100)
         self.tableWidget.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -242,6 +241,7 @@ class JlcSearch(QDialog):
         self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_EXT, 60)
         self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_DESC, 210)
         self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_PKG, 90)
+        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_MANF, 120)
         self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_PRICE, 130)
         self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_STOCK, 60)
         self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_IMAGE, 100)
@@ -466,7 +466,8 @@ class JlcSearch(QDialog):
 
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_EXT,   QTableWidgetItem(row[DbRowEnum.DB_ROW_LIB_TYPE]))
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_DESC,  QTableWidgetItem(row[DbRowEnum.DB_ROW_SEC_CAT] + ' ' + row[DbRowEnum.DB_ROW_DESCR]))
-                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PKG,   QTableWidgetItem(str(row[DbRowEnum.DB_ROW_PACKAGE_]).replace('_','\n')))
+                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PKG,   QTableWidgetItem(str(row[DbRowEnum.DB_ROW_PACKAGE]).replace('_','\n')))
+                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_MANF,  QTableWidgetItem(row[DbRowEnum.DB_ROW_MANF] + '\n' + row[DbRowEnum.DB_ROW_MFR_PART]))
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PRICE, QTableWidgetItem(priceField))
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_STOCK, QTableWidgetItem(row[DbRowEnum.DB_ROW_STOCK]))
                     
