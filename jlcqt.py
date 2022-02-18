@@ -173,6 +173,9 @@ class JlcSearch(QDialog):
         tabsLayout.addWidget(self.tabWidget)
         
         convertTab = QWidget()
+        self.downloadLink = LinkLabel(self)
+        self.downloadLink.setText('<a href={0}>{1}</a>'.format('https://jlcpcb.com/componentSearch/uploadComponentInfo', 'Download CSV from: https://jlcpcb.com/componentSearch/uploadComponentInfo'))
+
         self.csvFile = QComboBox()
         self.csvFile.setSizePolicy(expandPolicy)
         
@@ -211,13 +214,13 @@ class JlcSearch(QDialog):
         self.progressBar.setValue(0)
         
         convertLayout = QGridLayout()
-        #convertBox.setContentsMargins(5, 5, 5, 5)
-        convertLayout.addLayout(csvFileLayout, 0, 0, 1, 2)
-        convertLayout.addWidget(self.cacheAllImages)
-        convertLayout.addWidget(self.clearFailedImages)
-        convertLayout.addLayout(dbFileLayout, 2, 0, 1, 2)
-        convertLayout.addWidget(self.convertNow)
-        convertLayout.addWidget(self.progressBar)
+        convertLayout.addWidget(self.downloadLink, 0, 0, 2, 2)
+        convertLayout.addLayout(csvFileLayout, 1, 0, 2, 2)
+        convertLayout.addWidget(self.cacheAllImages, 2, 0, 2, 1)
+        convertLayout.addWidget(self.clearFailedImages, 2, 1, 2, 1)
+        convertLayout.addLayout(dbFileLayout, 3, 0, 2, 2)
+        convertLayout.addWidget(self.convertNow, 4, 0, 2, 1)
+        convertLayout.addWidget(self.progressBar, 5, 0, 2, 2)
 
         convertTab.setLayout(convertLayout)
 
@@ -321,10 +324,10 @@ class JlcSearch(QDialog):
             cur.execute('''CREATE TABLE jlc
                            (LCSCPart, FirstCategory, SecondCategory, MFRPart, Package, SolderJoint, Manufacturer, LibraryType, Description, Datasheet, Price, Stock, worstPrice, image)''')
             
+            # This is naff, csv.reader has no method for getting the number of records so you have to parse twice!!
             with open(self.csvFile.currentText()) as csvFile:
                 row_count = sum(1 for line in csvFile)
                 
-            
             with open(self.csvFile.currentText(), newline='') as csvFile:
                 reader = csv.reader(csvFile,delimiter=',')            
     
