@@ -7,16 +7,16 @@ This is a quick and dirty hack which I may decide to revisit. Do, please, feel f
 ## Acknowledgement
 Although implemented in a totally different way, this was inspired by https://github.com/yaqwsx/jlcparts.
 
-Until yaqwsx published his web-based tool, I hadn't even thought to try to improve on the clunky web-based search engine that is standard from JLCPCB.com
+Until Jan published his web-based tool, I hadn't even thought to try to improve on the clunky web-based search engine that is standard from JLCPCB.com
 
 In many ways, this "App" type tool is inferior having less functionality and less flexibility but... it's quicker for the type of use I wanted.
 
 ## Use
-This was written with Python3 and uses pyqt5, csv, sqlite3 and requests. NB you might need to update your "pip" to get pyqt5.
+This was written with Python3 and uses pyqt5, csv, sqlite3 and requests. NB: you might need to update your "pip" to get pyqt5.
 
 It requires a "imageCache" directory in the same directory as the script and that "imageCache" must contain a no_image.png (the one checked in here came from https://commons.wikimedia.org/wiki/File:Error.svg).
 
-Before you start you must get a CSV data file from JLC (https://jlcpcb.com/componentSearch/uploadComponentInfo). This file is updated frequently with current stock etc. Unfortunately, I found downloading this file a bit hit-and-miss (often times out with network errors) so I gave up trying to integrate that into the process. The CSV file is about 132M Bytes at the moment.
+Before you start you must get a CSV data file from JLC (https://jlcpcb.com/componentSearch/uploadComponentInfo). This file is updated frequently with current stock etc. Unfortunately, I found downloading this file a bit hit-and-miss (often times-out with network errors) so I gave up trying to integrate that into the process. The CSV file is about 132M Bytes at the moment.
 
 Start as:
   python jlcqt.py
@@ -33,7 +33,7 @@ There are 2 tabs:
 The convert tab will come up if the current directory doesnt have a database file. It lets you:
 
 1) Specify the name of the CSV file (which you must download from https://jlcpcb.com/componentSearch/uploadComponentInfo
-2) Option to pre-cache all the images
+2) Option to pre-cache all the images (don't do it, it takes hours and loads 10s of gigabytes of image data)
 3) Clear the list of failedParts if it's got errors in it
 4) Set the database name (sorry, must be jlc.pcb at the moment)
 
