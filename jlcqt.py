@@ -208,7 +208,8 @@ class JlcSearch(QDialog):
         
         self.convertNow = QPushButton("Convert To Database")
         self.convertNow.clicked.connect(self.convertProcedure)
-        
+        self.convertStatus = QLabel()
+
         self.progressBar = QProgressBar()
         self.progressBar.setRange(0, 10000)
         self.progressBar.setValue(0)
@@ -220,6 +221,7 @@ class JlcSearch(QDialog):
         convertLayout.addWidget(self.clearFailedImages, 2, 1, 2, 1)
         convertLayout.addLayout(dbFileLayout, 3, 0, 2, 2)
         convertLayout.addWidget(self.convertNow, 4, 0, 2, 1)
+        convertLayout.addWidget(self.convertStatus, 4, 1, 2, 1)
         convertLayout.addWidget(self.progressBar, 5, 0, 2, 2)
 
         convertTab.setLayout(convertLayout)
@@ -300,6 +302,8 @@ class JlcSearch(QDialog):
         else:
             self.converting = True
             self.convertNow.setText("Abort")
+            
+            self.convertStatus.setText("Converting {0}".format(self.csvFile.currentText()))
             
             try:
                 os.remove(self.dbFileName.text())
@@ -383,6 +387,7 @@ class JlcSearch(QDialog):
                             
             self.converting = False
             self.convertNow.setText("Convert To Database")
+            self.convertStatus.setText("Done")
                         
             # Save changes
             con.commit()
