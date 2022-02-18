@@ -155,7 +155,6 @@ class ImgLabel(QLabel):
         painter.drawPixmap(point, scaledPix)    
 
     def mousePressEvent(self, ev):
-        print("Clicked")
         self.clicked.emit()
     
 class LinkLabel(QLabel):    
@@ -530,19 +529,21 @@ class JlcSearch(QDialog):
                     # If it might have been possible to download the image, clicking will do that
                     if imageFilename == defaultImage:
                         if imageNotInFailedList:
-                            imgLabel.clicked.connect(partial(self.imageClicked, row))
+                            imgLabel.clicked.connect(partial(self.imageClicked, row, imgLabel))
                             imgLabel.setToolTip('Click to try to download image')
                     else:
-                        imgLabel.clicked.connect(partial(self.imageClicked, row))
+                        imgLabel.clicked.connect(partial(self.imageClicked, row, imgLabel))
                         tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
                         imgLabel.setToolTip(tooltip)
     
                     self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_IMAGE, imgLabel)
 
-    def imageClicked(self, row):
+    def imageClicked(self, row, imgLabel):
         imageFilename = getimageFilename(row)
         if imageFilename != defaultImage:
-            self.handleDb()
+            imgLabel.pixmap = QPixmap(imageCacheDir + imageFilename)
+            imgLabel.repaint()
+
 
     def sortType_clicked(self):
         if self.sortValue == SortEnum.SORT_STOCK_DOWN:
