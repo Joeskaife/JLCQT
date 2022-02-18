@@ -49,6 +49,7 @@ Eg: cap 10nf
 By default it will list entries ordered by largest stock holding, but you can change this to sort by rising-price or by rising-price for in-stock items only.
 
 Sorry, not a full set of options but I'm open to requests... also it is just some python so if you want to tinker...  
+![JlcSearchDialog](https://user-images.githubusercontent.com/246554/154662161-fe78e945-4a92-4174-aef7-7c913956d103.png)
 
 ## Problems
 The code is, er, "alpha-quality". Again, sorry!
