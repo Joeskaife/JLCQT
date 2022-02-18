@@ -26,6 +26,7 @@ import requests
 import glob
 import _thread
 import time
+import re
 
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
@@ -85,48 +86,54 @@ def getImage(imgUrl, lcscCode):
         print('html request threw exception.')
         return False
         
-def getImageFilename(datasheet, lcscPart):
-    if datasheet.strip() == '':
-        # No datasheet, no way to derive an image url
-        imageFilename = defaultImage
+def getimageFilename(row):
+    lcscPart = row[DbRowEnum.DB_ROW_LCSC_PART]
+    imageFilename = lcscPart + '.jpg'
+    
+    if row[DbRowEnum.DB_ROW_DATASHEET].strip() == '':
+        # If there's no datasheet, best guess to image name is manufacture-partNumber_lcscPartNumber
+        partialImageName = row[DbRowEnum.DB_ROW_MANF] + '-' + row[DbRowEnum.DB_ROW_MFR_PART] + '_' + row[DbRowEnum.DB_ROW_LCSC_PART]
     else:
-        imageFilename = lcscPart + '.jpg'
         try:
-            splitDatasheet = datasheet.split('_', 1)
+            # Extract the part of the datasheet name that is useful
+            splitDatasheet = row[DbRowEnum.DB_ROW_DATASHEET].split('_', 1)
             splitDatasheet = splitDatasheet[1].rsplit('.', 1)
-        
-            '''
-             There are a number of variations of the url for the image - some of which look like typos
-             All are based on the datasheet name (for want of a better algorithm)
-            '''
-            imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front.jpg'
-            
+            partialImageName = splitDatasheet[0]
+        except:
+            return defaultImage
+    
+    '''
+     There are a number of variations of the url for the image - some of which look like typos
+     All are based on the datasheet name (for want of a better algorithm)
+    '''
+    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_front.jpg'
+    
+    if not getImage(imageLink, lcscPart):
+        imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_front_10.jpg'
+
+        if not getImage(imageLink, lcscPart):
+            imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_front_10.JPG'
+
             if not getImage(imageLink, lcscPart):
-                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front_10.jpg'
+                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_front_11.jpg'
 
                 if not getImage(imageLink, lcscPart):
-                    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front_10.JPG'
-
+                    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20280914_' + partialImageName + '_front.jpg'
+                    
                     if not getImage(imageLink, lcscPart):
-                        imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_front_11.jpg'
-
-                        if not getImage(imageLink, lcscPart):
-                            imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20280914_' + splitDatasheet[0] + '_front.jpg'
+                        imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_1.jpg'
+                        
+                        if not getImage(imageLink, lcscPart):                                       
+                            imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_package.jpg'
                             
-                            if not getImage(imageLink, lcscPart):
-                                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_1.jpg'
-                                
-                                if not getImage(imageLink, lcscPart):                                       
-                                    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + splitDatasheet[0] + '_package.jpg'
+                            if not getImage(imageLink, lcscPart):                                       
+                                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20200421_' + partialImageName + '_front.jpg'
+                            
+                                if not getImage(imageLink, lcscPart):
+                                    with open(failedPartsFile, 'a') as failedParts:
+                                        failedParts.write(lcscPart + '.jpg\n')
                                     
-                                    if not getImage(imageLink, lcscPart):
-                                        with open(failedPartsFile, 'a') as failedParts:
-                                            failedParts.write(imageFilename + '\n')
-                                            
-                                        imageFilename = defaultImage
-        except:
-            print('Error: problem trying to parse datasheet entry: {0}'.format(datasheet))
-            imageFilename = defaultImage
+                                    imageFilename = defaultImage
 
     return imageFilename
 
@@ -148,6 +155,7 @@ class ImgLabel(QLabel):
         painter.drawPixmap(point, scaledPix)    
 
     def mousePressEvent(self, ev):
+        print("Clicked")
         self.clicked.emit()
     
 class LinkLabel(QLabel):    
@@ -293,6 +301,20 @@ class JlcSearch(QDialog):
         self.csvFile.clear()
         self.csvFile.addItem(fname[0])
 
+    def fixUpOddChars(self, rawString):
+        # Use a dictionary of string conversions
+        replacements = {u'\xa6\xcc': 'u',   # micro
+                        u'\xa6\xb8': 'R',   # Ohms
+                        u'\xa1\xc0': '+/-', # Plus or minus
+                        u'\xa1\xe6': 'C',   # Celcius
+                        u'\xa3\xa5': '%'    # Percent
+                        }
+
+        replacements = {key: val for key, val in replacements.items()}
+        pattern = re.compile("|".join(replacements))
+        newString = pattern.sub(lambda match: replacements[match.group(0)], rawString)  
+        return newString
+
             
     def convertProcedure(self):
         # Abort Mechanism not working, needs a thread
@@ -342,18 +364,18 @@ class JlcSearch(QDialog):
                 for row in reader:
                     # Abort mechanism
                     if not self.converting == False:
-                        imageFileName = ''
+                        imageFilename = ''
                         
                         # The first line in JLC files is a header
                         if len(row) == 13:
                             if self.cacheAllImages.isChecked():
                                 imageFilename = row[DbRowEnum.DB_ROW_LCSC_PART] + '.jpg'
                                 if imageFilename not in currentImageList and imageFilename not in failedPartsList:
-                                    imageFileName = getImageFilename(row[DbRowEnum.DB_ROW_DATASHEET], row[DbRowEnum.DB_ROW_LCSC_PART])
+                                    imageFilename = getimageFilename(row)
                                 else:
                                     imageFilename = defaultImage
                                 
-                            prices = row[10].split(',')
+                            prices = row[DbRowEnum.DB_ROW_PRICE].split(',')
                             worstPrice = 0.0
                             thisPrice = 0.0
                             for price in prices:
@@ -375,9 +397,12 @@ class JlcSearch(QDialog):
                                 if thisPrice > worstPrice:
                                     worstPrice = thisPrice
                             
-                            row[12] = worstPrice
+                            row[DbRowEnum.DB_ROW_WORST_PRICE] = worstPrice
+                            row[DbRowEnum.DB_ROW_FIRST_CAT] = self.fixUpOddChars(row[DbRowEnum.DB_ROW_FIRST_CAT])
+                            row[DbRowEnum.DB_ROW_SEC_CAT] = self.fixUpOddChars(row[DbRowEnum.DB_ROW_SEC_CAT])
+                            row[DbRowEnum.DB_ROW_DESCR] = self.fixUpOddChars(row[DbRowEnum.DB_ROW_DESCR])
                             
-                            row.append(imageFileName)
+                            row.append(imageFilename)
                             cur.execute("INSERT INTO jlc VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", row)
                             
                             rowIndex += 1
@@ -392,7 +417,7 @@ class JlcSearch(QDialog):
             # Save changes
             con.commit()
             con.close()
-        
+    
     def handleDb(self):        
         if not os.path.isfile(self.dbFileName.text()):
             error_dialog = QErrorMessage()
@@ -485,12 +510,13 @@ class JlcSearch(QDialog):
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_STOCK, QTableWidgetItem(row[DbRowEnum.DB_ROW_STOCK]))
                     
                     imageFilename = row[DbRowEnum.DB_ROW_LCSC_PART] + '.jpg'
+
                     imageNotInFailedList = False
                     if imageFilename not in failedPartsList:
                         imageNotInFailedList = True
                         if imageFilename not in currentImageList:
                             if self.loadImages.isChecked():
-                                imageFileName = getImageFilename(row[DbRowEnum.DB_ROW_DATASHEET], row[DbRowEnum.DB_ROW_LCSC_PART])
+                                imageFilename = getimageFilename(row)
                                 if imageFilename == defaultImage:
                                     imageNotInFailedList = False
                             else:
@@ -502,16 +528,19 @@ class JlcSearch(QDialog):
                     imgLabel.setScaledContents(True)
                     
                     # If it might have been possible to download the image, clicking will do that
-                    if (imageFilename == defaultImage) and imageNotInFailedList:
-                        imgLabel.clicked.connect(partial(self.imageClicked, row[DbRowEnum.DB_ROW_LCSC_PART], row[DbRowEnum.DB_ROW_DATASHEET]))
-    
-                    tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
-                    imgLabel.setToolTip(tooltip)
+                    if imageFilename == defaultImage:
+                        if imageNotInFailedList:
+                            imgLabel.clicked.connect(partial(self.imageClicked, row))
+                            imgLabel.setToolTip('Click to try to download image')
+                    else:
+                        imgLabel.clicked.connect(partial(self.imageClicked, row))
+                        tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
+                        imgLabel.setToolTip(tooltip)
     
                     self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_IMAGE, imgLabel)
 
-    def imageClicked(self, part, datasheet):
-        imageFilename = getImageFilename(datasheet, part)
+    def imageClicked(self, row):
+        imageFilename = getimageFilename(row)
         if imageFilename != defaultImage:
             self.handleDb()
 
