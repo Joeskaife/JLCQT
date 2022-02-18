@@ -23,6 +23,7 @@ import csv
 import sqlite3
 import os
 import requests
+import glob
 import _thread
 import time
 
@@ -67,7 +68,6 @@ class TableColumnEnum(IntEnum):
 imageCacheDir = 'imageCache/'
 failedPartsFile = imageCacheDir +'failedParts.txt'
 defaultImage = 'no_image.png'
-defaultCsvFile = 'JLCPCB.csv'
 defaultDbFile = 'jlc.db'
                  
 def getImage(imgUrl, lcscCode):
@@ -176,14 +176,18 @@ class JlcSearch(QDialog):
         self.csvFile = QComboBox()
         self.csvFile.setSizePolicy(expandPolicy)
         
-        # If the default file is here already, show it
-        if os.path.isfile(defaultCsvFile):
-            self.csvFile.addItem(defaultCsvFile)
+        csvFiles = glob.glob('*.csv')
+            
+        # If there are some files in the directory, show them
+        if len(csvFiles):
+            for file in csvFiles:
+                self.csvFile.addItem(file)
         else:
             self.getCsvFile()
         self.csvFileLabel = QLabel("CSV File:")
         self.csvFileLabel.setBuddy(self.csvFile)
-        self.csvFile.activated.connect(self.getCsvFile)
+        self.findFiles = QPushButton("Find Files")
+        self.findFiles.clicked.connect(self.getCsvFile)
         self.cacheAllImages = QCheckBox("Force all images to be cached (takes hours and gigabytes of disk space!)")
         self.clearFailedImages = QCheckBox("Clear list of failed images")
         self.dbFileName = QLineEdit(defaultDbFile)
@@ -193,6 +197,7 @@ class JlcSearch(QDialog):
         csvFileLayout = QHBoxLayout()
         csvFileLayout.addWidget(self.csvFileLabel)
         csvFileLayout.addWidget(self.csvFile)
+        csvFileLayout.addWidget(self.findFiles)
         
         dbFileLayout = QHBoxLayout()
         dbFileLayout.addWidget(self.dbFileNameLabel)
