@@ -161,7 +161,26 @@ class LinkLabel(QLabel):
     def __init__(self, img):
         super().__init__()
         self.setOpenExternalLinks(True)
+
+class PartAndDatasheetWidget(QWidget):
+    def __init__(self, partLink, datasheetLink):
+        #super(PartAndDatasheetWidget,self).__init__(None)
+        super().__init__()
+        layout = QGridLayout()
+        partLinkLabel = QLabel(self)
+        partLinkLabel.linkActivated.connect(self.openLink)
+        partLinkLabel.setText(partLink)
+        datasheetLinkLabel = QLabel(self)
+        datasheetLinkLabel.linkActivated.connect(self.openLink)
+        datasheetLinkLabel.setText(datasheetLink)
+        layout.addWidget(partLinkLabel)
+        layout.addWidget(datasheetLinkLabel)
+        self.setLayout(layout)
         
+    def openLink(self, linkStr):
+        print(self)
+        QDesktopServices.openUrl(QUrl(linkStr.replace('%3d','=')))
+            
 class JlcSearch(QDialog):
     def __init__(self, parent=None):
         super(JlcSearch, self).__init__(parent)
@@ -254,7 +273,7 @@ class JlcSearch(QDialog):
         verticalHeader = self.tableWidget.verticalHeader()
         verticalHeader.setMinimumSectionSize(100)
         self.tableWidget.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_PART, 60)
+        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_PART, 80)
         self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_EXT, 60)
         self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_DESC, 210)
         self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_PKG, 90)
@@ -498,10 +517,16 @@ class JlcSearch(QDialog):
                     if len(prices) > 3:
                         priceField +=  '\n' + prices[3]
                     
-                    linkLabel = QLabel(self)
-                    linkLabel.linkActivated.connect(self.openLink)
-                    linkLabel.setText("<a href=https://jlcpcb.com/parts/componentSearch?isSearch%3dtrue&searchTxt%3d{0}>{1}</a>".format(row[DbRowEnum.DB_ROW_LCSC_PART], row[DbRowEnum.DB_ROW_LCSC_PART]))
-                    self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, linkLabel)
+                    partLinkText = "<a href=https://jlcpcb.com/parts/componentSearch?isSearch%3dtrue&searchTxt%3d{0}>{1}</a>".format(row[DbRowEnum.DB_ROW_LCSC_PART], row[DbRowEnum.DB_ROW_LCSC_PART])
+                    if row[DbRowEnum.DB_ROW_DATASHEET].strip() == '':   
+                        linkLabel = QLabel(self)
+                        linkLabel.linkActivated.connect(self.openLink)
+                        linkLabel.setText(partLinkText)
+                        self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, linkLabel)                   
+                    else:
+                        datasheetLinkText = "<a href={0}>Datasheet</a>".format(row[DbRowEnum.DB_ROW_DATASHEET])
+                        partAndDatasheetWidget = PartAndDatasheetWidget(partLinkText, datasheetLinkText)
+                        self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, partAndDatasheetWidget)
 
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_EXT,   QTableWidgetItem(row[DbRowEnum.DB_ROW_LIB_TYPE]))
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_DESC,  QTableWidgetItem(row[DbRowEnum.DB_ROW_SEC_CAT] + ' ' + row[DbRowEnum.DB_ROW_DESCR]))
