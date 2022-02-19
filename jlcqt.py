@@ -417,6 +417,10 @@ class JlcSearch(QDialog):
             con.commit()
             con.close()
     
+    def openLink(self, linkStr):
+        print(self)
+        QDesktopServices.openUrl(QUrl(linkStr.replace('%3d','=')))
+        
     def handleDb(self):        
         if not os.path.isfile(self.dbFileName.text()):
             error_dialog = QErrorMessage()
@@ -494,12 +498,10 @@ class JlcSearch(QDialog):
                     if len(prices) > 3:
                         priceField +=  '\n' + prices[3]
                     
-                    if row[DbRowEnum.DB_ROW_DATASHEET].strip() == '':   
-                        self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PART,  QTableWidgetItem(row[DbRowEnum.DB_ROW_LCSC_PART]))
-                    else:
-                        linkLabel = LinkLabel(self)
-                        linkLabel.setText('<a href={0}>{1}</a>'.format(row[DbRowEnum.DB_ROW_DATASHEET], row[DbRowEnum.DB_ROW_LCSC_PART]))
-                        self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, linkLabel)
+                    linkLabel = QLabel(self)
+                    linkLabel.linkActivated.connect(self.openLink)
+                    linkLabel.setText("<a href=https://jlcpcb.com/parts/componentSearch?isSearch%3dtrue&searchTxt%3d{0}>{1}</a>".format(row[DbRowEnum.DB_ROW_LCSC_PART], row[DbRowEnum.DB_ROW_LCSC_PART]))
+                    self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, linkLabel)
 
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_EXT,   QTableWidgetItem(row[DbRowEnum.DB_ROW_LIB_TYPE]))
                     self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_DESC,  QTableWidgetItem(row[DbRowEnum.DB_ROW_SEC_CAT] + ' ' + row[DbRowEnum.DB_ROW_DESCR]))
