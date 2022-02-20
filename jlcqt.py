@@ -66,6 +66,23 @@ class TableColumnEnum(IntEnum):
     TABLE_COL_IMAGE = 7
     TABLE_COL_COUNT = 8
 
+class BomColumnEnum(IntEnum):
+    BOM_COL_COMMENT = 0
+    BOM_COL_DES = 1
+    BOM_COL_FOOT = 2
+    BOM_COL_PART = 3
+    BOM_COL_PRICE = 4
+    BOM_COL_STOCK = 5
+    BOM_COL_IMAGE = 6
+    BOM_COL_COUNT = 7
+
+class JlcCsvColumnEnum(IntEnum):
+    JLC_CSV_COMMENT = 0
+    JLC_CSV_DES = 1
+    JLC_CSV_FOOT = 2
+    JLC_CSV_PART = 3
+    JLC_CSV_COUNT = 4
+
 imageCacheDir = 'imageCache/'
 failedPartsFile = imageCacheDir +'failedParts.txt'
 defaultImage = 'no_image.png'
@@ -132,6 +149,7 @@ def getimageFilename(row):
                                 if not getImage(imageLink, lcscPart):
                                     with open(failedPartsFile, 'a') as failedParts:
                                         failedParts.write(lcscPart + '.jpg\n')
+                                        self.failedPartsList.append(lcscPart + '.jpg')
                                     
                                     imageFilename = defaultImage
 
@@ -178,8 +196,152 @@ class PartAndDatasheetWidget(QWidget):
         self.setLayout(layout)
         
     def openLink(self, linkStr):
-        print(self)
         QDesktopServices.openUrl(QUrl(linkStr.replace('%3d','=')))
+
+class BomTable(QTableWidget):
+        def __init__(self, currentImageList, failedImageList):
+            super().__init__(0, BomColumnEnum.BOM_COL_COUNT)
+            self.setHorizontalHeaderLabels(['Comment','Designator','Footprint','LCSC Part', 'Price', 'Stock', 'Image'])
+            verticalHeader = self.verticalHeader()
+            verticalHeader.setMinimumSectionSize(50)
+            self.setEditTriggers(QTableWidget.NoEditTriggers)
+            self.setColumnWidth(BomColumnEnum.BOM_COL_COMMENT, 210)
+            self.setColumnWidth(BomColumnEnum.BOM_COL_DES, 60)
+            self.setColumnWidth(BomColumnEnum.BOM_COL_FOOT, 210)
+            self.setColumnWidth(BomColumnEnum.BOM_COL_PART, 90)
+            self.setColumnWidth(BomColumnEnum.BOM_COL_PRICE, 130)
+            self.setColumnWidth(BomColumnEnum.BOM_COL_STOCK, 60)
+            self.setColumnWidth(BomColumnEnum.BOM_COL_IMAGE, 50)
+            
+            self.currentImageList = currentImageList
+            self.failedPartsList = failedImageList
+        
+        def imageClicked(self, row, imgLabel):
+            imageFilename = getimageFilename(row)
+            if imageFilename != defaultImage:
+                imgLabel.pixmap = QPixmap(imageCacheDir + imageFilename)
+                imgLabel.repaint()
+                
+        def populate(self, rows, downloadImages):                
+            linkTemplate = '<a href={0}>{1}</a>'   
+            self.setRowCount(0)
+            for row in rows:
+                rowPosition = self.rowCount()
+                self.insertRow(rowPosition)
+                self.setItem(rowPosition, BomColumnEnum.BOM_COL_COMMENT,   QTableWidgetItem(row[BomColumnEnum.BOM_COL_COMMENT]))
+                self.setItem(rowPosition, BomColumnEnum.BOM_COL_DES,   QTableWidgetItem(row[BomColumnEnum.BOM_COL_DES]))
+                self.setItem(rowPosition, BomColumnEnum.BOM_COL_FOOT,   QTableWidgetItem(row[BomColumnEnum.BOM_COL_FOOT]))
+                self.setItem(rowPosition, BomColumnEnum.BOM_COL_PART,   QTableWidgetItem(row[BomColumnEnum.BOM_COL_PART]))
+                
+                if row[BomColumnEnum.BOM_COL_PART] != '':
+                    imageFilename = row[BomColumnEnum.BOM_COL_PART] + '.jpg'
+    
+                    if imageFilename not in self.currentImageList:
+                        imageFilename = defaultImage
+                                        
+                    imgLabel = ImgLabel(imageCacheDir + imageFilename)
+                    imgLabel.setScaledContents(True)
+                    
+                    if imageFilename != defaultImage:
+                        tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
+                        imgLabel.setToolTip(tooltip)
+    
+                    self.setCellWidget(rowPosition, BomColumnEnum.BOM_COL_IMAGE, imgLabel)
+                
+class PartTable(QTableWidget):
+        def __init__(self, currentImageList, failedImageList):
+            super().__init__(0, TableColumnEnum.TABLE_COL_COUNT)
+            self.setHorizontalHeaderLabels(['LCSC Part','Type','Description','Package','Manf','Price','Stock','Image'])
+            verticalHeader = self.verticalHeader()
+            verticalHeader.setMinimumSectionSize(100)
+            self.setEditTriggers(QTableWidget.NoEditTriggers)
+            self.setColumnWidth(TableColumnEnum.TABLE_COL_PART, 80)
+            self.setColumnWidth(TableColumnEnum.TABLE_COL_EXT, 60)
+            self.setColumnWidth(TableColumnEnum.TABLE_COL_DESC, 210)
+            self.setColumnWidth(TableColumnEnum.TABLE_COL_PKG, 90)
+            self.setColumnWidth(TableColumnEnum.TABLE_COL_MANF, 120)
+            self.setColumnWidth(TableColumnEnum.TABLE_COL_PRICE, 130)
+            self.setColumnWidth(TableColumnEnum.TABLE_COL_STOCK, 60)
+            self.setColumnWidth(TableColumnEnum.TABLE_COL_IMAGE, 100)
+            
+            self.currentImageList = currentImageList
+            self.failedPartsList = failedImageList
+        
+        def imageClicked(self, row, imgLabel):
+            imageFilename = getimageFilename(row)
+            if imageFilename != defaultImage:
+                imgLabel.pixmap = QPixmap(imageCacheDir + imageFilename)
+                imgLabel.repaint()
+        
+        def openLink(self, linkStr):
+                QDesktopServices.openUrl(QUrl(linkStr.replace('%3d','=')))
+        
+        def populate(self, rows, downloadImages):                                
+            self.setRowCount(0)                
+            linkTemplate = '<a href={0}>{1}</a>'      
+
+            for row in rows:
+                rowPosition = self.rowCount()
+                self.insertRow(rowPosition)
+                
+                # Add up to 4 price ranges
+                prices = row[DbRowEnum.DB_ROW_PRICE].split(',')
+                priceField = prices[0]
+                if len(prices) > 1:
+                    priceField +=  '\n' + prices[1]
+                if len(prices) > 2:
+                    priceField +=  '\n' + prices[2]
+                if len(prices) > 3:
+                    priceField +=  '\n' + prices[3]
+                
+                #partLinkText = "<a href=https://jlcpcb.com/parts/componentSearch?isSearch%3dtrue&searchTxt%3d{0}>{1}</a>".format(row[DbRowEnum.DB_ROW_LCSC_PART], row[DbRowEnum.DB_ROW_LCSC_PART])
+                partLinkText = "<a href=https://lcsc.com/search?q%3d{0}>{1}</a>".format(row[DbRowEnum.DB_ROW_LCSC_PART], row[DbRowEnum.DB_ROW_LCSC_PART])
+                if row[DbRowEnum.DB_ROW_DATASHEET].strip() == '':   
+                    linkLabel = QLabel(self)
+                    linkLabel.linkActivated.connect(self.openLink)
+                    linkLabel.setText(partLinkText)
+                    self.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, linkLabel)                   
+                else:
+                    datasheetLinkText = "<a href={0}>Datasheet</a>".format(row[DbRowEnum.DB_ROW_DATASHEET])
+                    partAndDatasheetWidget = PartAndDatasheetWidget(partLinkText, datasheetLinkText)
+                    self.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, partAndDatasheetWidget)
+
+                self.setItem(rowPosition, TableColumnEnum.TABLE_COL_EXT,   QTableWidgetItem(row[DbRowEnum.DB_ROW_LIB_TYPE]))
+                self.setItem(rowPosition, TableColumnEnum.TABLE_COL_DESC,  QTableWidgetItem(row[DbRowEnum.DB_ROW_SEC_CAT] + ' ' + row[DbRowEnum.DB_ROW_DESCR]))
+                self.setItem(rowPosition, TableColumnEnum.TABLE_COL_PKG,   QTableWidgetItem(str(row[DbRowEnum.DB_ROW_PACKAGE]).replace('_','\n')))
+                self.setItem(rowPosition, TableColumnEnum.TABLE_COL_MANF,  QTableWidgetItem(row[DbRowEnum.DB_ROW_MANF] + '\n' + row[DbRowEnum.DB_ROW_MFR_PART]))
+                self.setItem(rowPosition, TableColumnEnum.TABLE_COL_PRICE, QTableWidgetItem(priceField))
+                self.setItem(rowPosition, TableColumnEnum.TABLE_COL_STOCK, QTableWidgetItem(row[DbRowEnum.DB_ROW_STOCK]))
+                
+                imageFilename = row[DbRowEnum.DB_ROW_LCSC_PART] + '.jpg'
+
+                imageNotInFailedList = False
+                if imageFilename not in self.failedPartsList:
+                    imageNotInFailedList = True
+                    if imageFilename not in self.currentImageList:
+                        if downloadImages:
+                            imageFilename = getimageFilename(row)
+                            if imageFilename == defaultImage:
+                                imageNotInFailedList = False
+                        else:
+                            imageFilename = defaultImage
+                else:
+                    imageFilename = defaultImage
+                                    
+                imgLabel = ImgLabel(imageCacheDir + imageFilename)
+                imgLabel.setScaledContents(True)
+                
+                # If it might have been possible to download the image, clicking will do that
+                if imageFilename == defaultImage:
+                    if imageNotInFailedList:
+                        imgLabel.clicked.connect(partial(self.imageClicked, row, imgLabel))
+                        imgLabel.setToolTip('Click to try to download image')
+                else:
+                    imgLabel.clicked.connect(partial(self.imageClicked, row, imgLabel))
+                    tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
+                    imgLabel.setToolTip(tooltip)
+
+                self.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_IMAGE, imgLabel)
             
 class JlcSearch(QDialog):
     def __init__(self, parent=None):
@@ -192,6 +354,16 @@ class JlcSearch(QDialog):
         expandPolicy.setHorizontalPolicy(QSizePolicy.Expanding)
 
         self.converting = False
+        
+        # Get the available images and the never-to-be-available images into 2 lists
+        self.currentImageList = os.listdir(imageCacheDir)
+        
+        try:
+            with open(failedPartsFile, 'r') as failedParts:
+                self.failedPartsList = failedParts.read().splitlines()
+        except:
+            self.failedPartsList = []
+                
         
         self.tabWidget = QTabWidget()
 
@@ -212,11 +384,11 @@ class JlcSearch(QDialog):
             for file in csvFiles:
                 self.csvFile.addItem(file)
         else:
-            self.getCsvFile()
+            self.getCsvFile(self.csvFile)
         self.csvFileLabel = QLabel("CSV File:")
         self.csvFileLabel.setBuddy(self.csvFile)
         self.findFiles = QPushButton("Find Files")
-        self.findFiles.clicked.connect(self.getCsvFile)
+        self.findFiles.clicked.connect(partial(self.getCsvFile, self.csvFile))
         self.cacheAllImages = QCheckBox("Force all images to be cached (takes hours and gigabytes of disk space!)")
         self.clearFailedImages = QCheckBox("Clear list of failed images")
         self.dbFileName = QLineEdit(defaultDbFile)
@@ -240,6 +412,8 @@ class JlcSearch(QDialog):
         self.progressBar.setRange(0, 10000)
         self.progressBar.setValue(0)
         
+        ''' Convert tab widgets
+        '''
         convertLayout = QGridLayout()
         convertLayout.addWidget(self.downloadLink, 0, 0, 2, 2)
         convertLayout.addLayout(csvFileLayout, 1, 0, 2, 2)
@@ -252,6 +426,8 @@ class JlcSearch(QDialog):
 
         convertTab.setLayout(convertLayout)
 
+        ''' Search Tab widgets
+        '''
         searchTab = QWidget()
         self.keywords = QLineEdit()
         self.keywordLabel = QLabel("Keywords:")
@@ -268,20 +444,8 @@ class JlcSearch(QDialog):
         #self.useExtendedCheckBox.setChecked(True)
         self.loadImages = QCheckBox("Load Images")
         self.loadImages.setChecked(True)
-        self.tableWidget = QTableWidget(0, TableColumnEnum.TABLE_COL_COUNT)
-        self.tableWidget.setHorizontalHeaderLabels(['LCSC Part','Type','Description','Package','Manf','Price','Stock','Image'])
-        verticalHeader = self.tableWidget.verticalHeader()
-        verticalHeader.setMinimumSectionSize(100)
-        self.tableWidget.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_PART, 80)
-        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_EXT, 60)
-        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_DESC, 210)
-        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_PKG, 90)
-        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_MANF, 120)
-        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_PRICE, 130)
-        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_STOCK, 60)
-        self.tableWidget.setColumnWidth(TableColumnEnum.TABLE_COL_IMAGE, 100)
-
+        
+        self.partTable = PartTable(self.currentImageList, self.failedPartsList)
         
         '''
             Search tab layout
@@ -298,14 +462,67 @@ class JlcSearch(QDialog):
         
         searchLayout = QGridLayout()
         searchLayout.addLayout(topLayout, 0, 0, 1, 2)
-        searchLayout.addWidget(self.tableWidget)
+        searchLayout.addWidget(self.partTable)
         searchTab.setLayout(searchLayout)
+
+        ''' BOM Tab widgets
+        '''
+        bomTab = QWidget()
+        self.bomFile = QComboBox()
+        self.bomFile.setSizePolicy(expandPolicy)
+        csvFiles = glob.glob('*.csv')
+            
+        # If there are some files in the directory, show them
+        if len(csvFiles):
+            for file in csvFiles:
+                self.bomFile.addItem(file)
+        else:
+            self.getCsvFile(self.bomFile)
+        self.bomFile.currentIndexChanged.connect(self.bomPopulate_clicked)        
+
+        self.findBoms = QPushButton("Find")
+        self.findBoms.clicked.connect(partial(self.getCsvFile, self.bomFile))
+        self.bomSrcLabel = QLabel("BOM Source:")
+        self.bomSrcLabel.setBuddy(self.bomFile)
+            
+        self.bomSrcType = QComboBox()
+        self.bomSrcType.addItem('JLC')
+        self.bomSrcTypeLabel = QLabel("BOM Nature:")
+        self.bomSrcTypeLabel.setBuddy(self.bomSrcType)
+        self.bomSelectType = QPushButton("Highest Stock")
+        self.bomSelectValue = SortEnum.SORT_STOCK_DOWN
+        #self.bomSelectType.clicked.connect(self.bomSelectType_clicked)
+        self.useExtendedinBomCheckBox = QCheckBox("Extended Parts")
+        self.bomPopulate = QPushButton("Populate")
+        self.bomPopulate.clicked.connect(self.bomPopulate_clicked)        
+        self.bomTable = BomTable(self.currentImageList, self.failedPartsList)
+
+
+        '''
+            BOM tab layout
+        '''
+        bomCtrlLayout = QHBoxLayout()
+        bomCtrlLayout.addWidget(self.bomSrcLabel)
+        bomCtrlLayout.addWidget(self.bomFile)
+        bomCtrlLayout.addWidget(self.findBoms)
+        
+        bomCtrlLayout.addWidget(self.bomSrcTypeLabel)
+        bomCtrlLayout.addWidget(self.bomSrcType)
+        bomCtrlLayout.addWidget(self.useExtendedinBomCheckBox)
+        bomCtrlLayout.addWidget(self.bomSelectType)
+        bomCtrlLayout.addWidget(self.bomPopulate)
+        
+        bomLayout = QGridLayout()
+        bomLayout.addLayout(bomCtrlLayout, 0, 0, 1, 2)
+        bomLayout.addWidget(self.bomTable)
+        bomTab.setLayout(bomLayout)
 
         '''
             Tabs top level
         '''
         self.tabWidget.addTab(convertTab, "Convert")
         self.tabWidget.addTab(searchTab, "Search")
+        self.tabWidget.addTab(bomTab, "BOM")
         self.setLayout(tabsLayout)
         
         if os.path.isfile(self.dbFileName.text()):
@@ -314,10 +531,10 @@ class JlcSearch(QDialog):
         self.setWindowTitle("JLCPCP Parts Search")
         QApplication.setStyle(QStyleFactory.create(('Fusion')))
     
-    def getCsvFile(self):
+    def getCsvFile(self, qlist):
         fname = QFileDialog.getOpenFileName(self, caption='CSV FIle', filter='*.csv')
-        self.csvFile.clear()
-        self.csvFile.addItem(fname[0])
+        qlist.clear()
+        qlist.addItem(fname[0])
 
     def fixUpOddChars(self, rawString):
         # Use a dictionary of string conversions
@@ -353,17 +570,6 @@ class JlcSearch(QDialog):
             con = sqlite3.connect(self.dbFileName.text())
             cur = con.cursor()
             
-            currentImageList = os.listdir(imageCacheDir)
-            
-            try:
-                if self.clearFailedImages.isChecked():
-                    os.remove(failedPartsFile)
-                else:
-                    with open(failedPartsFile, 'r') as failedParts:
-                        failedPartsList = failedParts.read().splitlines()
-            except:
-                failedPartsList = []
-            
             # Create table
             cur.execute('''CREATE TABLE jlc
                            (LCSCPart, FirstCategory, SecondCategory, MFRPart, Package, SolderJoint, Manufacturer, LibraryType, Description, Datasheet, Price, Stock, worstPrice, image)''')
@@ -388,7 +594,7 @@ class JlcSearch(QDialog):
                         if len(row) == 13:
                             if self.cacheAllImages.isChecked():
                                 imageFilename = row[DbRowEnum.DB_ROW_LCSC_PART] + '.jpg'
-                                if imageFilename not in currentImageList and imageFilename not in failedPartsList:
+                                if imageFilename not in self.currentImageList and imageFilename not in self.failedPartsList:
                                     imageFilename = getimageFilename(row)
                                 else:
                                     imageFilename = defaultImage
@@ -437,7 +643,6 @@ class JlcSearch(QDialog):
             con.close()
     
     def openLink(self, linkStr):
-        print(self)
         QDesktopServices.openUrl(QUrl(linkStr.replace('%3d','=')))
         
     def handleDb(self):        
@@ -449,14 +654,6 @@ class JlcSearch(QDialog):
             self.con = sqlite3.connect(self.dbFileName.text())
     
             cur = self.con.cursor()
-            
-            currentImageList = os.listdir(imageCacheDir)
-            
-            try:
-                with open(failedPartsFile, 'r') as failedParts:
-                    failedPartsList = failedParts.read().splitlines()
-            except:
-                failedPartsList = []
     
             sqlCommand = "SELECT * FROM jlc WHERE "
             if not self.useExtendedCheckBox.isChecked():
@@ -466,13 +663,19 @@ class JlcSearch(QDialog):
             keyWordList = self.keywords.text().split()
     
             if len(keyWordList) > 0:
-                sqlCommand += "("
-                for keyWord in keyWordList:
-                    if not firstCondition:
-                        sqlCommand += "AND "
-                    firstCondition = False
-                    sqlCommand += "(LOWER(FirstCategory) LIKE LOWER('%{0}%') OR LOWER(SecondCategory) LIKE LOWER('%{0}%') OR LOWER(Description) LIKE LOWER('%{0}%') OR LOWER(MFRPart) LIKE LOWER('%{0}%') OR LOWER(LCSCPart) = LOWER('{0}')) ".format(keyWord)
-                sqlCommand += ") "
+                firstKeyword = keyWordList[0].upper()
+                if len(keyWordList) == 1 and firstKeyword[0] == 'C' and firstKeyword[1:].isnumeric():
+                    sqlCommand += "(LCSCPart = '{0}')".format(firstKeyword)
+                else:
+                    sqlCommand += "("
+                    for keyWord in keyWordList:
+                        if not firstCondition:
+                            sqlCommand += "AND "
+                        firstCondition = False
+                        
+                        keyWord = keyWord.lower()
+                        sqlCommand += "(LOWER(FirstCategory) LIKE '%{0}%' OR LOWER(SecondCategory) LIKE '%{0}%' OR LOWER(Description) LIKE '%{0}%' OR LOWER(MFRPart) LIKE '%{0}%') ".format(keyWord)
+                    sqlCommand += ") "
                 
                 packagesList = self.packages.text().split()
                 firstCondition = True
@@ -498,80 +701,28 @@ class JlcSearch(QDialog):
                 cur.execute(sqlCommand)
     
                 rows = cur.fetchall()
-                                
-                self.tableWidget.setRowCount(0)
-                
-                linkTemplate = '<a href={0}>{1}</a>'      
+
+                self.partTable.populate(rows, self.loadImages.isChecked())
+
+    def handleBom(self):
+        with open(self.bomFile.currentText()) as csvFile:
+            row_count = sum(1 for line in csvFile)
+        
+        jlcBom = []
+        with open(self.bomFile.currentText(), newline='') as csvFile:
+            reader = csv.reader(csvFile,delimiter=',')
+            
+            for row in reader:
+                if row[JlcCsvColumnEnum.JLC_CSV_COMMENT] != 'Comment':
+                    jlcBom.append([row[JlcCsvColumnEnum.JLC_CSV_COMMENT],
+                                   row[JlcCsvColumnEnum.JLC_CSV_DES],
+                                   row[JlcCsvColumnEnum.JLC_CSV_FOOT],
+                                   row[JlcCsvColumnEnum.JLC_CSV_PART]])
+        
+            print(self.csvFile.currentText())
+            self.bomTable.populate(jlcBom, False)
+
     
-                for row in rows:
-                    rowPosition = self.tableWidget.rowCount()
-                    self.tableWidget.insertRow(rowPosition)
-                    
-                    # Add up to 4 price ranges
-                    prices = row[DbRowEnum.DB_ROW_PRICE].split(',')
-                    priceField = prices[0]
-                    if len(prices) > 1:
-                        priceField +=  '\n' + prices[1]
-                    if len(prices) > 2:
-                        priceField +=  '\n' + prices[2]
-                    if len(prices) > 3:
-                        priceField +=  '\n' + prices[3]
-                    
-                    partLinkText = "<a href=https://jlcpcb.com/parts/componentSearch?isSearch%3dtrue&searchTxt%3d{0}>{1}</a>".format(row[DbRowEnum.DB_ROW_LCSC_PART], row[DbRowEnum.DB_ROW_LCSC_PART])
-                    if row[DbRowEnum.DB_ROW_DATASHEET].strip() == '':   
-                        linkLabel = QLabel(self)
-                        linkLabel.linkActivated.connect(self.openLink)
-                        linkLabel.setText(partLinkText)
-                        self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, linkLabel)                   
-                    else:
-                        datasheetLinkText = "<a href={0}>Datasheet</a>".format(row[DbRowEnum.DB_ROW_DATASHEET])
-                        partAndDatasheetWidget = PartAndDatasheetWidget(partLinkText, datasheetLinkText)
-                        self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_PART, partAndDatasheetWidget)
-
-                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_EXT,   QTableWidgetItem(row[DbRowEnum.DB_ROW_LIB_TYPE]))
-                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_DESC,  QTableWidgetItem(row[DbRowEnum.DB_ROW_SEC_CAT] + ' ' + row[DbRowEnum.DB_ROW_DESCR]))
-                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PKG,   QTableWidgetItem(str(row[DbRowEnum.DB_ROW_PACKAGE]).replace('_','\n')))
-                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_MANF,  QTableWidgetItem(row[DbRowEnum.DB_ROW_MANF] + '\n' + row[DbRowEnum.DB_ROW_MFR_PART]))
-                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_PRICE, QTableWidgetItem(priceField))
-                    self.tableWidget.setItem(rowPosition, TableColumnEnum.TABLE_COL_STOCK, QTableWidgetItem(row[DbRowEnum.DB_ROW_STOCK]))
-                    
-                    imageFilename = row[DbRowEnum.DB_ROW_LCSC_PART] + '.jpg'
-
-                    imageNotInFailedList = False
-                    if imageFilename not in failedPartsList:
-                        imageNotInFailedList = True
-                        if imageFilename not in currentImageList:
-                            if self.loadImages.isChecked():
-                                imageFilename = getimageFilename(row)
-                                if imageFilename == defaultImage:
-                                    imageNotInFailedList = False
-                            else:
-                                imageFilename = defaultImage
-                    else:
-                        imageFilename = defaultImage
-                                        
-                    imgLabel = ImgLabel(imageCacheDir + imageFilename)
-                    imgLabel.setScaledContents(True)
-                    
-                    # If it might have been possible to download the image, clicking will do that
-                    if imageFilename == defaultImage:
-                        if imageNotInFailedList:
-                            imgLabel.clicked.connect(partial(self.imageClicked, row, imgLabel))
-                            imgLabel.setToolTip('Click to try to download image')
-                    else:
-                        imgLabel.clicked.connect(partial(self.imageClicked, row, imgLabel))
-                        tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
-                        imgLabel.setToolTip(tooltip)
-    
-                    self.tableWidget.setCellWidget(rowPosition, TableColumnEnum.TABLE_COL_IMAGE, imgLabel)
-
-    def imageClicked(self, row, imgLabel):
-        imageFilename = getimageFilename(row)
-        if imageFilename != defaultImage:
-            imgLabel.pixmap = QPixmap(imageCacheDir + imageFilename)
-            imgLabel.repaint()
-
-
     def sortType_clicked(self):
         if self.sortValue == SortEnum.SORT_STOCK_DOWN:
             self.sortType.setText("Sort Price Up")
@@ -589,6 +740,15 @@ class JlcSearch(QDialog):
         QApplication.processEvents() 
         self.handleDb()
         self.update.setText("Update")
+        
+    def bomPopulate_clicked(self):
+        self.bomPopulate.setText("Searching")
+        QApplication.processEvents() 
+        self.handleBom()
+        self.bomPopulate.setText("Populate")
+
+
+
 
 if __name__ == '__main__':
 
