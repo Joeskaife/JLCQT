@@ -369,10 +369,10 @@ class JlcSearch(QDialog):
                            (LCSCPart, FirstCategory, SecondCategory, MFRPart, Package, SolderJoint, Manufacturer, LibraryType, Description, Datasheet, Price, Stock, worstPrice, image)''')
             
             # This is naff, csv.reader has no method for getting the number of records so you have to parse twice!!
-            with open(self.csvFile.currentText()) as csvFile:
+            with open(self.csvFile.currentText(), encoding='ISO8859') as csvFile:
                 row_count = sum(1 for line in csvFile)
                 
-            with open(self.csvFile.currentText(), newline='') as csvFile:
+            with open(self.csvFile.currentText(), encoding='ISO8859', newline='') as csvFile:
                 reader = csv.reader(csvFile,delimiter=',')            
     
                 rowIndex = 0;
