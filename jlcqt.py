@@ -34,6 +34,7 @@ from PyQt5.QtGui import *
 from functools import partial
 from enum import IntEnum
 
+
 class SortEnum(IntEnum):
     SORT_STOCK_DOWN = 1
     SORT_PRICE_UP = 2
@@ -72,10 +73,11 @@ class BomColumnEnum(IntEnum):
     BOM_COL_DES = 1
     BOM_COL_FOOT = 2
     BOM_COL_PART = 3
-    BOM_COL_PRICE = 4
-    BOM_COL_STOCK = 5
-    BOM_COL_IMAGE = 6
-    BOM_COL_COUNT = 7
+    BOM_COL_BASIC = 4
+    BOM_COL_PRICE = 5
+    BOM_COL_STOCK = 6
+    BOM_COL_IMAGE = 7
+    BOM_COL_COUNT = 8
 
 class JlcCsvColumnEnum(IntEnum):
     JLC_CSV_COMMENT = 0
@@ -88,6 +90,7 @@ imageCacheDir = 'imageCache/'
 failedPartsFile = imageCacheDir +'failedParts.txt'
 defaultImage = 'no_image.png'
 defaultDbFile = 'jlc.db'
+defaultBomOutFile = 'jlcBom.csv'
                  
 def getImage(imgUrl, lcscCode):
     try:
@@ -186,6 +189,7 @@ class PartAndDatasheetWidget(QWidget):
         #super(PartAndDatasheetWidget,self).__init__(None)
         super().__init__()
         layout = QGridLayout()
+        self.lcscPartNumber = partNum
         partLinkLabel = QLabel(self)
         partLinkLabel.linkActivated.connect(self.openLink)
         partLinkLabel.setText("<a href=https://lcsc.com/search?q%3d{0}>{1}</a>".format(partNum, partNum))
@@ -196,10 +200,13 @@ class PartAndDatasheetWidget(QWidget):
             datasheetLinkLabel.setText(datasheetLink)
             layout.addWidget(datasheetLinkLabel)
         self.setLayout(layout)
-        
+
     def openLink(self, linkStr):
         QDesktopServices.openUrl(QUrl(linkStr.replace('%3d','=')))
        
+    def getLcscPartNumber(self):
+        #return re.search('>(.*?)<', self.partLinkLabel.text()).group(1)
+        return self.lcscPartNumber
 
                         
                                         
@@ -221,6 +228,10 @@ class PartTable(QTableWidget):
             
             self.currentImageList = currentImageList
             self.failedPartsList = failedImageList
+        
+            
+        def getSelectedLcscPartNumber(self, rowIndex):
+            return self.cellWidget(rowIndex, TableColumnEnum.TABLE_COL_PART).getLcscPartNumber()
         
         def imageClicked(self, row, imgLabel):
             imageFilename = getimageFilename(row, self.failedPartsList)
@@ -330,6 +341,9 @@ class JlcSearch(QDialog):
         self.csvFile.setSizePolicy(expandPolicy)
         
         csvFiles = glob.glob('*.csv')
+        
+        self.selectingNewPart = False
+        self.populatingBomTable = False
             
         # If there are some files in the directory, show them
         if len(csvFiles):
@@ -398,6 +412,8 @@ class JlcSearch(QDialog):
         self.loadImages.setChecked(True)
         
         self.partTable = PartTable(self.currentImageList, self.failedPartsList)
+        self.partTable.itemSelectionChanged.connect(self.partSelected)
+
         
         '''
             Search tab layout
@@ -445,25 +461,27 @@ class JlcSearch(QDialog):
         self.bomSelectValue = SortEnum.SORT_STOCK_DOWN
         #self.bomSelectType.clicked.connect(self.bomSelectType_clicked)
         self.useExtendedinBomCheckBox = QCheckBox("Extended Parts")
-        self.useExtendedinBomCheckBox.setChecked(True)
+        #self.useExtendedinBomCheckBox.setChecked(True)
 
         self.bomSearchForParts = QPushButton("Search For Parts")
+        self.bomWriteButton = QPushButton("Write BOM")
                       
         self.bomTable = QTableWidget(0, BomColumnEnum.BOM_COL_COUNT)
-        self.bomTable.setHorizontalHeaderLabels(['Comment','Designator','Footprint','LCSC Part', 'Price', 'Stock', 'Image'])
+        self.bomTable.setHorizontalHeaderLabels(['Comment','Designator','Footprint','LCSC Part', 'Basic','Price', 'Stock', 'Image'])
         verticalHeader = self.bomTable.verticalHeader()
         verticalHeader.setMinimumSectionSize(50)
         self.bomTable.setEditTriggers(QTableWidget.NoEditTriggers)
         self.bomTable.setColumnWidth(BomColumnEnum.BOM_COL_COMMENT, 210)
         self.bomTable.setColumnWidth(BomColumnEnum.BOM_COL_DES, 60)
         self.bomTable.setColumnWidth(BomColumnEnum.BOM_COL_FOOT, 210)
+        self.bomTable.setColumnWidth(BomColumnEnum.BOM_COL_BASIC, 50)
         self.bomTable.setColumnWidth(BomColumnEnum.BOM_COL_PART, 90)
         self.bomTable.setColumnWidth(BomColumnEnum.BOM_COL_PRICE, 130)
         self.bomTable.setColumnWidth(BomColumnEnum.BOM_COL_STOCK, 60)
         self.bomTable.setColumnWidth(BomColumnEnum.BOM_COL_IMAGE, 50)
         self.bomTable.itemSelectionChanged.connect(self.bomPartSelect)
         self.bomSearchForParts.clicked.connect(self.bomSearch)
-
+        self.bomWriteButton.clicked.connect(self.bomWrite)
 
         '''
             BOM tab layout
@@ -478,6 +496,7 @@ class JlcSearch(QDialog):
         bomCtrlLayout.addWidget(self.useExtendedinBomCheckBox)
         bomCtrlLayout.addWidget(self.bomSelectType)
         bomCtrlLayout.addWidget(self.bomSearchForParts)
+        bomCtrlLayout.addWidget(self.bomWriteButton)
         
         bomLayout = QGridLayout()
         bomLayout.addLayout(bomCtrlLayout, 0, 0, 1, 2)
@@ -523,22 +542,26 @@ class JlcSearch(QDialog):
         if imageFilename != defaultImage:
             imgLabel.pixmap = QPixmap(imageCacheDir + imageFilename)
             imgLabel.repaint()
-                
-    def bomPopulateTable(self):
-        with open(self.bomFile.currentText()) as csvFile:
-            self.numBomRows = sum(1 for line in csvFile)
-        
-        jlcBom = []
-        with open(self.bomFile.currentText(), newline='') as csvFile:
-            reader = csv.reader(csvFile,delimiter=',')
+    
+    def bomWrite(self):
+        with open(defaultBomOutFile, 'w') as bomFile:
+            bomFile.write('Comment,Designator,Footprint,LCSC Part #\n')
             
-            for row in reader:
-                if row[JlcCsvColumnEnum.JLC_CSV_COMMENT] != 'Comment':
-                    jlcBom.append([row[JlcCsvColumnEnum.JLC_CSV_COMMENT],
-                                   row[JlcCsvColumnEnum.JLC_CSV_DES],
-                                   row[JlcCsvColumnEnum.JLC_CSV_FOOT],
-                                   row[JlcCsvColumnEnum.JLC_CSV_PART]])
-                                            
+            self.bomWriteButton.setText("Writing...")
+            QApplication.processEvents()
+
+            for rowIndex in range(self.bomTable.rowCount()):
+                commentData = self.bomTable.item(rowIndex, BomColumnEnum.BOM_COL_COMMENT).text()
+                designator = self.bomTable.item(rowIndex, BomColumnEnum.BOM_COL_DES).text()
+                footprintData = self.bomTable.item(rowIndex, BomColumnEnum.BOM_COL_FOOT).text()
+                lcscPart = self.bomTable.cellWidget(rowIndex, BomColumnEnum.BOM_COL_PART).getLcscPartNumber()
+
+                bomFile.write(commentData + ',' + designator + ',' + footprintData + ',' + lcscPart + '\n')
+            
+            print("BOM Written")
+            self.bomWriteButton.setText("Write BOM")
+        
+    def bomPopulateRow(self, rowPosition, bomData):
         if not os.path.isfile(self.dbFileName.text()):
             error_dialog = QErrorMessage()
             error_dialog.showMessage('Can\'t find database file: {0}'.format(self.dbFileName.text()))
@@ -547,58 +570,95 @@ class JlcSearch(QDialog):
             self.con = sqlite3.connect(self.dbFileName.text())
 
             cur = self.con.cursor()
-    
-            sqlCommand = "SELECT * FROM jlc WHERE LCSCPart = '{0}'"
+
+            self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_COMMENT,   QTableWidgetItem(bomData[BomColumnEnum.BOM_COL_COMMENT]))
+            self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_DES,   QTableWidgetItem(bomData[BomColumnEnum.BOM_COL_DES]))
+            self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_FOOT,   QTableWidgetItem(bomData[BomColumnEnum.BOM_COL_FOOT]))
+            self.bomTable.setCellWidget(rowPosition, BomColumnEnum.BOM_COL_PART, PartAndDatasheetWidget(bomData[BomColumnEnum.BOM_COL_PART], '')) 
+                #self.setItem(rowPosition, BomColumnEnum.BOM_COL_PART,   QTableWidgetItem(row[BomColumnEnum.BOM_COL_PART]))
+                
+            if bomData[BomColumnEnum.BOM_COL_PART] != '':                            
+                cur.execute("SELECT * FROM jlc WHERE LCSCPart = '{0}'".format(bomData[BomColumnEnum.BOM_COL_PART]))
+                dbRows = cur.fetchall()
+                
+                # Hopefully there's only one row
+                if len(dbRows) >= 1:
+                    dbData = dbRows[0]
+                    if dbData[DbRowEnum.DB_ROW_LIB_TYPE] == 'Basic':
+                        typeMarker = 'Y'
+                    else:
+                        typeMarker = 'N'
+
+                    self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_BASIC,   QTableWidgetItem(typeMarker))
+                    pricePer = round(dbData[DbRowEnum.DB_ROW_WORST_PRICE]/dbData[DbRowEnum.DB_ROW_MIN_QUANTITY],4)
+                    
+                    self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_PRICE,   QTableWidgetItem(str(pricePer)))
+                    self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_STOCK,   QTableWidgetItem(str(dbData[DbRowEnum.DB_ROW_STOCK])))
+
+            
+                imageFilename = bomData[BomColumnEnum.BOM_COL_PART] + '.jpg'
+
+                if imageFilename not in self.currentImageList:
+                    imageFilename = defaultImage
+                                    
+                imgLabel = ImgLabel(imageCacheDir + imageFilename)
+                imgLabel.setScaledContents(True)
+                
+                if imageFilename != defaultImage:
+                    tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
+                    imgLabel.setToolTip(tooltip)
+
+                self.bomTable.setCellWidget(rowPosition, BomColumnEnum.BOM_COL_IMAGE, imgLabel)
+        
+    def bomPopulateTable(self):
+        with open(self.bomFile.currentText()) as csvFile:
+            self.numBomRows = sum(1 for line in csvFile)
+        
+        jlcBom = []
+        with open(self.bomFile.currentText(), newline='') as csvFile:
+            reader = csv.reader(csvFile,delimiter=',')
+            self.bomTable.setCurrentCell(0,0)
+            self.populatingBomTable = True
+            for row in reader:
+                if len(row) and row[JlcCsvColumnEnum.JLC_CSV_COMMENT] != 'Comment':
+                    jlcBom.append([row[JlcCsvColumnEnum.JLC_CSV_COMMENT],
+                                   row[JlcCsvColumnEnum.JLC_CSV_DES],
+                                   row[JlcCsvColumnEnum.JLC_CSV_FOOT],
+                                   row[JlcCsvColumnEnum.JLC_CSV_PART]])
+                                        
 
             self.bomTable.setRowCount(0)
             for row in jlcBom:
                 rowPosition = self.bomTable.rowCount()
                 self.bomTable.insertRow(rowPosition)
-                self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_COMMENT,   QTableWidgetItem(row[BomColumnEnum.BOM_COL_COMMENT]))
-                self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_DES,   QTableWidgetItem(row[BomColumnEnum.BOM_COL_DES]))
-                self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_FOOT,   QTableWidgetItem(row[BomColumnEnum.BOM_COL_FOOT]))
-                                            
-                self.bomTable.setCellWidget(rowPosition, BomColumnEnum.BOM_COL_PART, PartAndDatasheetWidget(row[BomColumnEnum.BOM_COL_PART], '')) 
-                #self.setItem(rowPosition, BomColumnEnum.BOM_COL_PART,   QTableWidgetItem(row[BomColumnEnum.BOM_COL_PART]))
-                
-                if row[BomColumnEnum.BOM_COL_PART] != '':                            
-                    cur.execute(sqlCommand.format(row[BomColumnEnum.BOM_COL_PART]))
-                    dbRows = cur.fetchall()
-                    
-                    # Hopefully there's only one row
-                    if len(dbRows) == 1:
-                        dbData = dbRows[0]
-                        self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_PRICE,   QTableWidgetItem(str(dbData[DbRowEnum.DB_ROW_WORST_PRICE])))
-                        self.bomTable.setItem(rowPosition, BomColumnEnum.BOM_COL_STOCK,   QTableWidgetItem(str(dbData[DbRowEnum.DB_ROW_STOCK])))
-                    else:
-                        print("BOM found {0} rows".format(len(dbRows)))
-
-                
-                    imageFilename = row[BomColumnEnum.BOM_COL_PART] + '.jpg'
-    
-                    if imageFilename not in self.currentImageList:
-                        imageFilename = defaultImage
-                                        
-                    imgLabel = ImgLabel(imageCacheDir + imageFilename)
-                    imgLabel.setScaledContents(True)
-                    
-                    if imageFilename != defaultImage:
-                        tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
-                        imgLabel.setToolTip(tooltip)
-    
-                    self.bomTable.setCellWidget(rowPosition, BomColumnEnum.BOM_COL_IMAGE, imgLabel)
+                self.bomPopulateRow(rowPosition, row)
+        self.populatingBomTable = False
     
     def openLink(self, linkStr):
         QDesktopServices.openUrl(QUrl(linkStr.replace('%3d','=')))
         
     def bomPartSelect(self):
-        currentRow = self.bomTable.currentRow()
-        self.keywords.setText(self.bomTable.item(currentRow, BomColumnEnum.BOM_COL_COMMENT).text())
-        self.packages.setText(self.bomTable.item(currentRow, BomColumnEnum.BOM_COL_FOOT).text().replace('_', ' '))
-        self.useExtendedCheckBox.setChecked(self.useExtendedinBomCheckBox.isChecked())
-        self.tabWidget.setCurrentIndex(1)
-        self.update_clicked()
+        if not self.populatingBomTable:
+            currentRow = self.bomTable.currentRow()
+            self.keywords.setText(self.bomTable.item(currentRow, BomColumnEnum.BOM_COL_COMMENT).text())
+            self.packages.setText(self.bomTable.item(currentRow, BomColumnEnum.BOM_COL_FOOT).text().replace('_', ' '))
+            self.useExtendedCheckBox.setChecked(self.useExtendedinBomCheckBox.isChecked())
+            self.selectingNewPart = True
+            self.tabWidget.setCurrentIndex(1)
+            self.update_clicked()
 
+    def partSelected(self):
+        if self.selectingNewPart:
+            currentRow = self.partTable.currentRow()
+            newLcscPart = self.partTable.getSelectedLcscPartNumber(currentRow)
+            newRow = [self.bomTable.itemAt(currentRow, BomColumnEnum.BOM_COL_COMMENT).text(),
+                      self.bomTable.itemAt(currentRow, BomColumnEnum.BOM_COL_DES).text(),
+                      self.bomTable.itemAt(currentRow, BomColumnEnum.BOM_COL_FOOT).text(),
+                      newLcscPart]
+            self.selectingNewPart = False
+            self.tabWidget.setCurrentIndex(2)
+
+        
     def bomSearch(self):
         if not os.path.isfile(self.dbFileName.text()):
             error_dialog = QErrorMessage()
@@ -606,6 +666,9 @@ class JlcSearch(QDialog):
             error_dialog.exec_()
         else:
             self.con = sqlite3.connect(self.dbFileName.text())
+
+            self.bomSearchForParts.setText("Searching...")
+            QApplication.processEvents()
 
             cur = self.con.cursor()
                         
@@ -656,7 +719,15 @@ class JlcSearch(QDialog):
                     #self.removeCellWidget(row, BomColumnEnum.BOM_COL_PART) 
                     self.bomTable.setCellWidget(rowIndex, BomColumnEnum.BOM_COL_PART, PartAndDatasheetWidget(bestGuessRow[DbRowEnum.DB_ROW_LCSC_PART],'')) 
                     #self.setItem(row, BomColumnEnum.BOM_COL_PART,    LcscLinkLabel(bestGuessRow[DbRowEnum.DB_ROW_LCSC_PART]))
-                    self.bomTable.setItem(rowIndex, BomColumnEnum.BOM_COL_PRICE,   QTableWidgetItem(str(bestGuessRow[DbRowEnum.DB_ROW_WORST_PRICE])))
+                    
+                    if bestGuessRow[DbRowEnum.DB_ROW_LIB_TYPE] == 'Basic':
+                        typeMarker = 'Y'
+                    else:
+                        typeMarker = 'N'
+                    self.bomTable.setItem(rowIndex, BomColumnEnum.BOM_COL_BASIC,   QTableWidgetItem(typeMarker))
+                    
+                    pricePer = round(bestGuessRow[DbRowEnum.DB_ROW_WORST_PRICE]/bestGuessRow[DbRowEnum.DB_ROW_MIN_QUANTITY],4)
+                    self.bomTable.setItem(rowIndex, BomColumnEnum.BOM_COL_PRICE,   QTableWidgetItem(str(pricePer)))
                     self.bomTable.setItem(rowIndex, BomColumnEnum.BOM_COL_STOCK,   QTableWidgetItem(str(bestGuessRow[DbRowEnum.DB_ROW_STOCK])))
                     # todo add image
                     # Green means part found
@@ -665,6 +736,7 @@ class JlcSearch(QDialog):
                     # Pink means part not found at JLC
                     self.bomTable.item(rowIndex, BomColumnEnum.BOM_COL_COMMENT).setBackground(QColor("lightpink"))
                 QApplication.processEvents()
+        self.bomSearchForParts.setText("Search For Parts")
 
         
     def convertProcedure(self):
@@ -738,20 +810,20 @@ class JlcSearch(QDialog):
                                     thisPrice = 99999999
                                 
                                 # Record the price for the minimum quantity
-                                if (thisPrice * thisQuantity) > worstPrice:
-                                    worstPrice = (thisPrice * thisQuantity)
+                                if thisPrice > worstPrice:
+                                    worstPrice = thisPrice
                                     
                                 if thisQuantity <= 1:
                                     minQuantity = 1
                                 elif thisQuantity < minQuantity:
                                     minQuantity = thisQuantity
                             
-                            row[DbRowEnum.DB_ROW_WORST_PRICE] = worstPrice
+                            row[DbRowEnum.DB_ROW_WORST_PRICE] = worstPrice * minQuantity
                             row[DbRowEnum.DB_ROW_FIRST_CAT] = self.fixUpOddChars(row[DbRowEnum.DB_ROW_FIRST_CAT])
                             row[DbRowEnum.DB_ROW_SEC_CAT] = self.fixUpOddChars(row[DbRowEnum.DB_ROW_SEC_CAT])
                             row[DbRowEnum.DB_ROW_DESCR] = self.fixUpOddChars(row[DbRowEnum.DB_ROW_DESCR])
                             
-                            row.append(1)
+                            row.append(minQuantity)
                             row.append(imageFilename)
                             cur.execute("INSERT INTO jlc VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", row)
                             
@@ -827,9 +899,10 @@ class JlcSearch(QDialog):
                 cur.execute(sqlCommand)
     
                 rows = cur.fetchall()
-
+                self.update.setText("Searching")
+                QApplication.processEvents() 
                 self.partTable.searchPopulate(rows, self.loadImages.isChecked())
-
+                self.update.setText("Update")
     
     def sortType_clicked(self):
         if self.sortValue == SortEnum.SORT_STOCK_DOWN:
@@ -848,15 +921,10 @@ class JlcSearch(QDialog):
         QApplication.processEvents() 
         self.handleDb()
         self.update.setText("Update")
-        
-
-
 
 
 if __name__ == '__main__':
-
     import sys
-
     app = QApplication(sys.argv)
     dialogApp = JlcSearch()
     dialogApp.show()
