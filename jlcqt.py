@@ -91,8 +91,11 @@ failedPartsFile = imageCacheDir +'failedParts.txt'
 defaultImage = 'no_image.png'
 defaultDbFile = 'jlc.db'
 defaultBomOutFile = 'jlcBom.csv'
+numFetchedImages = 0
+
                  
 def getImage(imgUrl, lcscCode):
+    print('.', end='', flush=True)
     try:
         response = requests.get(imgUrl, timeout=3.05)
         if response.status_code == 200:
@@ -111,6 +114,11 @@ def getimageFilename(row, failedPartsList):
     lcscPart = row[DbRowEnum.DB_ROW_LCSC_PART]
     imageFilename = lcscPart + '.jpg'
     
+    '''
+     There are a number of variations of the url for the image - some of which look like typos
+     All are based on the datasheet name (for want of a better algorithm)
+    '''
+    
     if row[DbRowEnum.DB_ROW_DATASHEET].strip() == '':
         # If there's no datasheet, best guess to image name is manufacture-partNumber_lcscPartNumber
         partialImageName = row[DbRowEnum.DB_ROW_MANF] + '-' + row[DbRowEnum.DB_ROW_MFR_PART] + '_' + row[DbRowEnum.DB_ROW_LCSC_PART]
@@ -123,39 +131,35 @@ def getimageFilename(row, failedPartsList):
         except:
             return defaultImage
     
-    '''
-     There are a number of variations of the url for the image - some of which look like typos
-     All are based on the datasheet name (for want of a better algorithm)
-    '''
-    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_front.jpg'
-    
-    if not getImage(imageLink, lcscPart):
-        imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_front_10.jpg'
+    global numFetchedImages
+    numFetchedImages += 1
 
-        if not getImage(imageLink, lcscPart):
-            imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_front_10.JPG'
+    imageUrlTemplates = ['https://assets.lcsc.com/images/lcsc/900x900/20180914_{0}_front.jpg',
+                         'https://assets.lcsc.com/images/lcsc/900x900/20180914_{0}_front_10.jpg',
+                         'https://assets.lcsc.com/images/lcsc/900x900/20180914_{0}_front_10.JPG',
+                         'https://assets.lcsc.com/images/lcsc/900x900/20180914_{0}_front_11.jpg',
+                         'https://assets.lcsc.com/images/lcsc/900x900/20280914_{0}_front.jpg',
+                         'https://assets.lcsc.com/images/lcsc/900x900/20180914_{0}_1.jpg',
+                         'https://assets.lcsc.com/images/lcsc/900x900/20180914_{0}_package.jpg',
+                         'https://assets.lcsc.com/images/lcsc/900x900/20200421_{0}_front.jpg'
+                         ]
 
-            if not getImage(imageLink, lcscPart):
-                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_front_11.jpg'
 
-                if not getImage(imageLink, lcscPart):
-                    imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20280914_' + partialImageName + '_front.jpg'
-                    
-                    if not getImage(imageLink, lcscPart):
-                        imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_1.jpg'
-                        
-                        if not getImage(imageLink, lcscPart):                                       
-                            imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20180914_' + partialImageName + '_package.jpg'
-                            
-                            if not getImage(imageLink, lcscPart):                                       
-                                imageLink = 'https://assets.lcsc.com/images/lcsc/900x900/20200421_' + partialImageName + '_front.jpg'
-                            
-                                if not getImage(imageLink, lcscPart):
-                                    with open(failedPartsFile, 'a') as failedParts:
-                                        failedParts.write(lcscPart + '.jpg\n')
-                                        failedPartsList.append(lcscPart + '.jpg')
-                                    
-                                    imageFilename = defaultImage
+    imageFound = False
+    templateIndex = 0
+    for template in imageUrlTemplates:
+        if getImage(template.format(partialImageName), lcscPart):
+            imageFound = True
+            print('{0}'.format(templateIndex), end='', flush=True)
+            break
+        templateIndex += 1
+                  
+    if not imageFound:
+        with open(failedPartsFile, 'a') as failedParts:
+            failedParts.write(lcscPart + '.jpg\n')
+            failedPartsList.append(lcscPart + '.jpg')
+        
+        imageFilename = defaultImage
 
     return imageFilename
 
@@ -305,7 +309,7 @@ class PartTable(QTableWidget):
 
 
 class JlcSearch(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, allowCachingDuringScan, parent=None):
         super(JlcSearch, self).__init__(parent)
         
         self.originalPalette = QApplication.palette()
@@ -326,7 +330,12 @@ class JlcSearch(QDialog):
                 self.failedPartsList = failedParts.read().splitlines()
         except:
             self.failedPartsList = []
-                
+        
+        # todo make this a parameter
+        self.allowCachingDuringScan = allowCachingDuringScan
+        global numFetchedImages
+        numFetchedImages = len(self.currentImageList) + len(self.failedPartsList)
+        self.dbLength = 1
         
         self.tabWidget = QTabWidget()
 
@@ -373,6 +382,7 @@ class JlcSearch(QDialog):
         self.convertNow = QPushButton("Convert To Database")
         self.convertNow.clicked.connect(self.convertProcedure)
         self.convertStatus = QLabel()
+        self.cachingStats = QLabel()
 
         self.progressBar = QProgressBar()
         self.progressBar.setRange(0, 10000)
@@ -383,12 +393,17 @@ class JlcSearch(QDialog):
         convertLayout = QGridLayout()
         convertLayout.addWidget(self.downloadLink, 0, 0, 2, 2)
         convertLayout.addLayout(csvFileLayout, 1, 0, 2, 2)
-        convertLayout.addWidget(self.cacheAllImages, 2, 0, 2, 1)
-        convertLayout.addWidget(self.clearFailedImages, 2, 1, 2, 1)
+        
+        if self.allowCachingDuringScan:
+            convertLayout.addWidget(self.cacheAllImages, 2, 0, 2, 1)
+            convertLayout.addWidget(self.clearFailedImages, 2, 1, 2, 1)
         convertLayout.addLayout(dbFileLayout, 3, 0, 2, 2)
         convertLayout.addWidget(self.convertNow, 4, 0, 2, 1)
         convertLayout.addWidget(self.convertStatus, 4, 1, 2, 1)
         convertLayout.addWidget(self.progressBar, 5, 0, 2, 2)
+        
+        if self.allowCachingDuringScan:
+            convertLayout.addWidget(self.cachingStats, 6, 0, 2, 2)
 
         convertTab.setLayout(convertLayout)
 
@@ -729,7 +744,21 @@ class JlcSearch(QDialog):
                     pricePer = round(bestGuessRow[DbRowEnum.DB_ROW_WORST_PRICE]/bestGuessRow[DbRowEnum.DB_ROW_MIN_QUANTITY],4)
                     self.bomTable.setItem(rowIndex, BomColumnEnum.BOM_COL_PRICE,   QTableWidgetItem(str(pricePer)))
                     self.bomTable.setItem(rowIndex, BomColumnEnum.BOM_COL_STOCK,   QTableWidgetItem(str(bestGuessRow[DbRowEnum.DB_ROW_STOCK])))
-                    # todo add image
+
+                    imageFilename = bestGuessRow[BomColumnEnum.BOM_COL_PART] + '.jpg'
+    
+                    if imageFilename not in self.currentImageList:
+                        imageFilename = defaultImage
+                                        
+                    imgLabel = ImgLabel(imageCacheDir + imageFilename)
+                    imgLabel.setScaledContents(True)
+                    
+                    if imageFilename != defaultImage:
+                        tooltip = '<img src="'+ imageCacheDir + imageFilename + '" width="300" height="300">'
+                        imgLabel.setToolTip(tooltip)
+    
+                    self.bomTable.setCellWidget(rowIndex, BomColumnEnum.BOM_COL_IMAGE, imgLabel)
+                    
                     # Green means part found
                     self.bomTable.item(rowIndex, BomColumnEnum.BOM_COL_COMMENT).setBackground(QColor("lightgreen"))
                 else:
@@ -765,6 +794,8 @@ class JlcSearch(QDialog):
             # This is naff, csv.reader has no method for getting the number of records so you have to parse twice!!
             with open(self.csvFile.currentText(), encoding='ISO8859') as csvFile:
                 row_count = sum(1 for line in csvFile)
+                
+                self.dbLength = row_count
                 
             with open(self.csvFile.currentText(), encoding='ISO8859', newline='') as csvFile:
                 reader = csv.reader(csvFile,delimiter=',')            
@@ -830,6 +861,10 @@ class JlcSearch(QDialog):
                             rowIndex += 1
     
                             self.progressBar.setValue(1 + int((rowIndex*10000)/row_count))
+                            
+                            if self.allowCachingDuringScan:
+                                self.cachingStats.setText("Cached {0} of {1} images: {2}%".format(numFetchedImages, self.dbLength, round(100*numFetchedImages/(1+self.dbLength), 0)))
+                                
                             QApplication.processEvents()
                             
             self.converting = False
@@ -926,7 +961,12 @@ class JlcSearch(QDialog):
 if __name__ == '__main__':
     import sys
     app = QApplication(sys.argv)
-    dialogApp = JlcSearch()
+        
+    if len(sys.argv) > 1:
+        allowControlOfCache = True
+    else:
+        allowControlOfCache = False
+    dialogApp = JlcSearch(allowControlOfCache)
     dialogApp.show()
     sys.exit(app.exec_()) 
 
